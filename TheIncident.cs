@@ -6,6 +6,7 @@ using ScheduleOne.NPCs;
 using UnityEngine;
 using ScheduleOne.GameTime;
 using ScheduleOne.AvatarFramework.Equipping;
+using ScheduleOne.Persistence;
 
 [assembly: MelonInfo(typeof(TheIncident.TheIncident), TheIncident.BuildInfo.Name, TheIncident.BuildInfo.Version, TheIncident.BuildInfo.Author, TheIncident.BuildInfo.DownloadLink)]
 [assembly: MelonColor()]
@@ -26,12 +27,13 @@ namespace TheIncident
     public class TheIncident : MelonMod
     {
         NPC[] npcs;
-        Light[] lights;
         List<object> coros = new();
         AvatarEquippable taser;
         AvatarEquippable gunPref;
-        List<Color> lColors = new();
+        Dictionary<Light, Color> lightsColors = new();
         float sleepTime = 0.05f;
+        private bool registered = false;
+
         public override void OnApplicationStart()
         {
             // MelonLogger.Msg("An Unknown Incident looms over the Hyland Point...");
@@ -41,9 +43,11 @@ namespace TheIncident
         {
             if (buildIndex == 1)
             {
-                this.npcs = UnityEngine.Object.FindObjectsOfType<NPC>(true);
-                this.lights = UnityEngine.Object.FindObjectsOfType<Light>(true);
-                this.coros.Add(MelonCoroutines.Start(this.IncidentBegin()));
+                if (LoadManager.Instance != null && !registered)
+                {
+                    LoadManager.Instance.onLoadComplete.AddListener(OnLoadCompleteCb);
+                    registered = true;
+                }
             }
 
             else
@@ -56,18 +60,30 @@ namespace TheIncident
             }
         }
 
+        private void OnLoadCompleteCb()
+        {
+            this.npcs = UnityEngine.Object.FindObjectsOfType<NPC>(true);
+            Light[] lights = UnityEngine.Object.FindObjectsOfType<Light>(true);
+
+            for (int i = 0; i < lights.Length; i++)
+                lightsColors.Add(lights[i], lights[i].color);
+
+            this.coros.Add(MelonCoroutines.Start(this.IncidentBegin()));
+        }
+
         private IEnumerator LightsRed()
         {
             // MelonLogger.Msg($"LightsCount: {lights.Length}");
-            if (lights.Length > 0)
+            if (lightsColors.Count > 0)
             {
-                foreach (Light l in lights)
+                for (int i = 0; i < lightsColors.Count; i++)
                 {
                     yield return new WaitForSeconds(0.02f);
                     try
                     {
-                        lColors.Add(l.color);
-                        l.color = Color.red;
+                        Light l = lightsColors.ElementAt(i).Key;
+                        if (l != null)
+                            l.color = Color.red;
                     }
                     catch (Exception ex)
                     {
@@ -80,13 +96,14 @@ namespace TheIncident
         private IEnumerator LightsClear()
         {
             // MelonLogger.Msg("The event lights ends...");
-            for (int i = 0; i < lights.Length; i++)
+            for (int i = 0; i < lightsColors.Count; i++)
             {
-                yield return new WaitForSeconds(0.01f);
+                yield return new WaitForSeconds(0.02f);
                 try
                 {
-                    // MelonLogger.Warning($"Revert Light");
-                    lights[i].color = lColors[i];
+                    Light l = lightsColors.ElementAt(i).Key;
+                    if (l != null)
+                        l.color = lightsColors.ElementAt(i).Value;
                 }
                 catch (Exception ex)
                 {
